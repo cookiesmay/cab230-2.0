@@ -1,0 +1,32 @@
+{
+  "name": "rentalsapp",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
+    "knex": "^3.2.10",
+    "morgan": "^1.11.0",
+    "mysql2": "^3.22.4",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "@faker-js/faker": "^7.6.0",
+    "axios": "^1.17.0",
+    "jest": "^30.4.2",
+    "luxon": "^3.7.2",
+    "uuid": "^9.0.1"
+  }
+}
