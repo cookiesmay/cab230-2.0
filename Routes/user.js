@@ -1,11 +1,10 @@
 import express from 'express';
-import bcrypt from 'bcrypt';
+import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import auth from '../middleware/auth.js'; 
 
 const router = express.Router();
 
-// POST /user/register
 router.post('/register', (req, res) => {
   const { email, password } = req.body;
 
@@ -18,7 +17,7 @@ router.post('/register', (req, res) => {
       if (user) {
         return res.status(409).json({ error: true, message: 'User already exists' });
       }
-      return bcrypt.hash(password, 10)
+      return argon2.hash(password)
         .then(hashedPassword => {
           return req.db('users').insert({ email, hash: hashedPassword });
         })
@@ -37,7 +36,7 @@ router.post('/debugLogin', (req, res) => {
   req.db('users').where({ email }).first()
     .then(user => {
       if (!user) return res.status(401).json({ error: true, message: 'Incorrect email or password' });
-      return bcrypt.compare(password, user.hash)
+      return argon2.verify(user.hash, password)
         .then(match => {
           if (!match) return res.status(401).json({ error: true, message: 'Incorrect email or password' });
           const token = jwt.sign({ email }, process.env.JWT_SECRET, { expiresIn: 1 });
@@ -47,7 +46,7 @@ router.post('/debugLogin', (req, res) => {
     .catch(err => { console.error(err); res.status(500).json({ error: true, message: 'Error in MySQL query' }); });
 });
 
-// POST /user/login
+
 router.post('/login', (req, res) => {
   const { email, password } = req.body;
 
@@ -60,8 +59,7 @@ router.post('/login', (req, res) => {
       if (!user) {
         return res.status(401).json({ error: true, message: 'Incorrect email or password' });
       }
-      // Compare plaintext input against the textbook 'hash' property
-      return bcrypt.compare(password, user.hash)
+      return argon2.verify(user.hash, password)
         .then(match => {
           if (!match) {
             return res.status(401).json({ error: true, message: 'Incorrect email or password' });
@@ -77,10 +75,7 @@ router.post('/login', (req, res) => {
     });
 });
 
-// GET /user/:email/profile
-// Remove 'auth' from this specific GET route so the tests can reach it
 router.get('/:email/profile', (req, res) => {
-  // Now check the auth header manually if it exists
   const authHeader = req.headers.authorization;
   let userEmail = null;
 
@@ -90,7 +85,6 @@ router.get('/:email/profile', (req, res) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       userEmail = decoded.email;
     } catch (err) {
-      // Token is present but invalid/expired, proceed as unauthenticated
     }
   }
 
@@ -109,7 +103,7 @@ router.get('/:email/profile', (req, res) => {
     .catch(err => { console.error(err); res.status(500).json({ error: true, message: 'Error in MySQL query' }); });
 });
 
-// PUT /user/:email/profile
+
 router.put('/:email/profile', auth, (req, res) => {
   if (req.params.email !== req.user.email) {
     return res.status(403).json({ error: true, message: 'Forbidden' });
@@ -125,33 +119,28 @@ router.put('/:email/profile', auth, (req, res) => {
     return res.status(400).json({ error: true, message: 'Request body invalid: firstName, lastName and address must be strings only.' });
   }
 
-  // 2. Validate Date format and past-tense
  if (dob !== undefined) {
     // Check regex format first
     if (typeof dob !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
         return res.status(400).json({ error: true, message: 'Invalid input: dob must be a real date in format YYYY-MM-DD.' });
     }
-    
-    // Check for rollover using the ISO string trick
+
     const parsed = new Date(dob);
     if (isNaN(parsed.getTime()) || !parsed.toISOString().startsWith(dob)) {
         return res.status(400).json({ error: true, message: 'Invalid input: dob must be a real date in format YYYY-MM-DD.' });
     }
     
-    // Check if future
     if (parsed >= new Date()) {
         return res.status(400).json({ error: true, message: 'Invalid input: dob must be a date in the past.' });
     }
   }
 
-  // 3. Always define updates object
   const updates = {};
   if (firstName !== undefined) updates.firstName = firstName;
   if (lastName !== undefined) updates.lastName = lastName;
   if (dob !== undefined) updates.dob = dob;
   if (address !== undefined) updates.address = address;
 
-  // 4. Perform update
   req.db('users').where({ email: req.params.email }).update(updates)
     .then(() => req.db('users').where({ email: req.params.email }).first())
     .then(user => res.status(200).json({

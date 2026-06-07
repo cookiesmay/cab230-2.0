@@ -733,6 +733,18 @@
                     "numRatings": {
                       "type": "integer",
                       "examples": [4]
+                    },
+                    "reviews": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "rating": { "type": "integer" },
+                          "user": { "type": "string" },
+                          "comment": { "type": "string" },
+                          "dateTime": { "type": "string" }
+                        }
+                      }
                     }
                   }
                 }
@@ -834,6 +846,10 @@
                             "type": "integer",
                             "examples": [3]
                           },
+                          "comment": {
+                            "type": "string",
+                            "examples": ["Decent value for money, but noisy."]
+                          },
                           "dateTime": {
                             "type": "string",
                             "examples": ["2026-03-14T23:47:45.371Z"]
@@ -841,11 +857,11 @@
                         }
                       },
                       "examples": [[
-                        {"rentalId": 1, "rating": 3, "dateTime": "2026-03-11T23:47:18.496Z"},
-                        {"rentalId": 17, "rating": 2, "dateTime": "2026-03-10T18:26:26.153Z"},
-                        {"rentalId": 100, "rating": 4, "dateTime": "2026-03-13T21:51:48.752Z"},
-                        {"rentalId": 1234, "rating": 3, "dateTime": "2026-03-09T17:39:35.365Z"},
-                        {"rentalId": 2000, "rating": 5, "dateTime": "2026-03-12T22:23:14.986Z"}
+                        {"rentalId": 1, "rating": 3, "comment": "Decent value for money, but noisy.", "dateTime": "2026-03-11T23:47:18.496Z"},
+                        {"rentalId": 17, "rating": 2, "comment": "Not worth the price.", "dateTime": "2026-03-10T18:26:26.153Z"},
+                        {"rentalId": 100, "rating": 4, "comment": "Great location and amenities.", "dateTime": "2026-03-13T21:51:48.752Z"},
+                        {"rentalId": 1234, "rating": 3, "comment": "Average experience.", "dateTime": "2026-03-09T17:39:35.365Z"},
+                        {"rentalId": 2000, "rating": 5, "comment": "Excellent stay!", "dateTime": "2026-03-12T22:23:14.986Z"}
                       ]]
                     },
                     "pagination": {
@@ -1006,13 +1022,17 @@
                       "type": "integer",
                       "examples": [3]
                     },
+                    "comment": {
+                      "type": "string",
+                      "examples": ["Decent value for money, but noisy."]
+                    },
                     "dateTime": {
                       "type": "string",
                       "examples": ["2026-03-14T23:47:45.371Z"]
                     }
                   },
                   "examples": [
-                    {"rating": 3, "dateTime": "2026-03-11T23:47:18.496Z"}
+                    {"rating": 3, "comment": "Great place!", "dateTime": "2026-03-11T23:47:18.496Z"}
                   ]
                 }
               }
@@ -1147,10 +1167,16 @@
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["rating"],
                 "properties": {
                   "rating": {
                     "type": "integer",
                     "enum": [1, 2, 3, 4, 5]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "examples": ["Great place!"]
                   }
                 }
               }
@@ -1166,16 +1192,21 @@
                   "type": "object",
                   "properties": {
                     "rating": {
-                      "type": "integer",
-                      "examples": [3]
-                    },
+                    "type": "integer",
+                    "enum": [1, 2, 3, 4, 5]
+                  },
+                  "comment": {
+                    "type": "string",
+                    "maxLength": 2000,
+                    "examples": ["Great place!"]
+                  },
                     "dateTime": {
                       "type": "string",
                       "examples": ["2026-03-14T23:47:45.371Z"]
                     }
                   },
                   "examples": [
-                    {"rating": 3, "dateTime": "2026-03-11T23:47:18.496Z"}
+                    {"rating": 3, "comment": "Great place!", "dateTime": "2026-03-11T23:47:18.496Z"}
                   ]
                 }
               }
@@ -1194,7 +1225,7 @@
                     },
                     "message": {
                       "type": "string",
-                      "examples": ["Invalid rating. Rating must be an integer value between 1 and 5."]
+                      "examples": ["Invalid rating or comment. Rating must be an integer value between 1 and 5, and comment must be less than 2000 characters."]
                     }
                   }
                 }
@@ -1299,7 +1330,7 @@
                 "properties": {
                   "email": {
                     "type": "string",
-                    "examples": ["mike@gmail.com"]
+                    "examples": ["bob@gmail.com"]
                   },
                   "password": {
                     "type": "string",
@@ -1381,26 +1412,20 @@
         }
       }
     },
-    "/user/login": {
+        "/user/login": {
       "post": {
-        "description": "Log in to an existing user account. A request body containing the user credentials must be sent.",
+        "description": "Log in to an existing user account.",
         "tags": ["Authentication"],
         "requestBody": {
-          "description": "The credentials of the user to log in.",
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "required": ["email", "password"],
                 "properties": {
-                  "email": {
-                    "type": "string",
-                    "examples": ["mike@gmail.com"]
-                  },
-                  "password": {
-                    "type": "string",
-                    "examples": ["password"]
-                  }
+                  "email": { "type": "string" },
+                  "password": { "type": "string" }
                 }
               }
             }
@@ -1483,7 +1508,62 @@
             }
           }
         }
+    }
+    },
+    "/user/{email}/profile": {
+      "get": {
+        "tags": ["Profile"],
+        "description": "Returns a user's profile information.",
+                "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "email", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "User profile returned.",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "email": { "type": "string" }, "firstName": { "type": ["string", "null"] }, "lastName": { "type": ["string", "null"] }, "dob": { "type": ["string", "null"] }, "address": { "type": ["string", "null"] } } } } }
+          },
+          "401": { "description": "Unauthorized" },
+          "404": { "description": "User not found" }
+        }
+      },
+      "put": {
+        "tags": ["Profile"],
+        "description": "Updates a user's profile information.",
+        "parameters": [
+          { "name": "email", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["firstName", "lastName", "dob", "address"],
+                "properties": {
+                  "firstName": { "type": "string" },
+                  "lastName": { "type": "string" },
+                  "dob": { "type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}$" },
+                  "address": { "type": "string" }
+                }
+              },
+              "example": {
+                "firstName": "Michael",
+                "lastName": "Jordan",
+                "dob": "1963-02-17",
+                "address": "123 Fake Street, Springfield"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Profile updated successfully." },
+          "400": { "description": "Bad Request." },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden" }
+        }
       }
     }
   }
-}
+} 
