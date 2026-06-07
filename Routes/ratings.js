@@ -3,13 +3,16 @@ import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.post('/debugEraseRatings', (req, res) => {
+router.post('/debugEraseRatings', (req, res, next) => {
   req.db('ratings').del()
-    .then(() => res.status(200).json({ message: 'Ratings erased' }))
-    .catch(err => res.status(500).json({ error: true, message: 'Error in MySQL query' }));
+    .then(() => res.status(200).json({ message: 'All ratings successfully erased.' }))
+    .catch(err => {
+      console.error(err);
+      res.status(500).json({ error: true, message: 'Error in MySQL query' });
+    });
 });
-// GET /ratings
-router.get('/', auth, (req, res) => {
+
+router.get('/', auth, (req, res, next) => {
   const { page } = req.query;
 
   const pageNum = page !== undefined ? Number(page) : 1;
@@ -22,18 +25,18 @@ router.get('/', auth, (req, res) => {
   const baseQuery = req.db('ratings').where({ userEmail: req.user.email });
 
   Promise.all([
-    baseQuery.clone().select('rentalId', 'rating', 'dateTime').orderBy('dateTime', 'desc').limit(perPage).offset(offset),
+    baseQuery.clone().select('rentalId', 'rating', 'comment', 'dateTime').orderBy('dateTime', 'desc').limit(perPage).offset(offset),
     baseQuery.clone().count('id as count').first()
   ])
     .then(([rows, countRow]) => {
-      const total = parseInt(countRow.count);
+      const total = countRow && countRow.count ? parseInt(countRow.count) : 0;
       const lastPage = Math.max(1, Math.ceil(total / perPage));
       res.status(200).json({
-        data: rows.map(r => ({
-          rentalId: r.rentalId,
-          rating: r.rating,
-          dateTime: new Date(r.dateTime).toISOString()
-        })),
+        data: rows.map(r => {
+          const item = { rentalId: r.rentalId, rating: r.rating, dateTime: new Date(r.dateTime).toISOString() };
+          if (r.comment) item.comment = r.comment;
+          return item;
+        }),
         pagination: {
           perPage, currentPage: pageNum,
           from: offset, to: offset + rows.length,
@@ -44,13 +47,12 @@ router.get('/', auth, (req, res) => {
       });
     })
     .catch(err => {
-      console.log(err);
+      console.error(err);
       res.status(500).json({ error: true, message: 'Error in MySQL query' });
     });
 });
 
-// GET /ratings/rentals/:id
-router.get('/rentals/:id', auth, (req, res) => {
+router.get('/rentals/:id', auth, (req, res, next) => {
   if (Object.keys(req.query).length > 0) {
     return res.status(400).json({ error: true, message: `Invalid query parameters: ${Object.keys(req.query).join(', ')}. Query parameters are not permitted.` });
   }
@@ -60,21 +62,21 @@ router.get('/rentals/:id', auth, (req, res) => {
   req.db('ratings').where({ userEmail: req.user.email, rentalId }).first()
     .then(row => {
       if (!row) return res.status(404).json({ error: true, message: 'No rating exists with this rental ID.' });
-      res.status(200).json({ rating: row.rating, dateTime: new Date(row.dateTime).toISOString() });
+      const response = { rating: row.rating, dateTime: new Date(row.dateTime).toISOString() };
+      if (row.comment) response.comment = row.comment;
+      res.status(200).json(response);
     })
     .catch(err => {
-      console.log(err);
+      console.error(err);
       res.status(500).json({ error: true, message: 'Error in MySQL query' });
     });
 });
 
-// POST /ratings/rentals/:id
-// POST /ratings/rentals/:id
-router.post('/rentals/:id', auth, (req, res) => {
+
+router.post('/rentals/:id', auth, (req, res, next) => {
   const rentalId = parseInt(req.params.id);
   const { rating, comment } = req.body;
 
-  // 1. Validation
   if (!rating || ![1,2,3,4,5].includes(Number(rating))) {
     return res.status(400).json({ error: true, message: 'Invalid rating. Rating must be an integer value between 1 and 5.' });
   }
@@ -83,34 +85,29 @@ router.post('/rentals/:id', auth, (req, res) => {
   }
 
   const dateTime = new Date();
-
-  // 2. Check if the rental actually exists in the 'data' table first
   req.db('data').where('id', rentalId).first()
     .then(rental => {
       if (!rental) return res.status(404).json({ error: true, message: 'No rental exists with this ID.' });
 
-      // 3. Check if the user has already rated this specific rental
       return req.db('ratings').where({ userEmail: req.user.email, rentalId }).first()
         .then(existing => {
-          const data = { rating: Number(rating), dateTime };
-          if (comment !== undefined) data.comment = comment;
+          const rentals = { rating: Number(rating), dateTime };
+          if (comment !== undefined) rentals.comment = comment;
 
-          // 4. Update or Insert based on whether they already rated it
           if (existing) {
-            return req.db('ratings').where({ userEmail: req.user.email, rentalId }).update(data);
+            return req.db('ratings').where({ userEmail: req.user.email, rentalId }).update(rentals);
           } else {
-            return req.db('ratings').insert({ userEmail: req.user.email, rentalId, ...data });
+            return req.db('ratings').insert({ userEmail: req.user.email, rentalId, ...rentals });
           }
         })
         .then(() => {
-          // The tests strictly expect a 201 for both inserts AND updates!
           const response = { rating: Number(rating), dateTime: dateTime.toISOString() };
           if (comment !== undefined) response.comment = comment;
           res.status(201).json(response);
         });
     })
     .catch(err => {
-      console.log(err);
+      console.error(err);
       res.status(500).json({ error: true, message: 'Error in MySQL query' });
     });
 });

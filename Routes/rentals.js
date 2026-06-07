@@ -20,7 +20,7 @@ router.get('/states', (req, res, next) => {
       res.status(200).json(statesArray);
     })
     .catch(err => {
-      console.log(err);
+      console.error(err);
       res.status(500).json({ error: true, message: "Error in SQL query" });
     });
 });
@@ -38,7 +38,7 @@ router.get('/property-types', (req, res, next) => {
       res.status(200).json(propertyTypesArray);
     })
     .catch(err => {
-      console.log(err);
+      console.error(err);
       res.status(500).json({ error: true, message: "Error in SQL query" });
     });
 });
@@ -60,6 +60,25 @@ router.get('/search', (req, res, next) => {
 
   const perPage = 10;
   const offset = (pageNum - 1) * perPage;
+
+  const intChecks = [
+    [minimumRent, 'minimumRent'], [maximumRent, 'maximumRent'],
+    [minimumBathrooms, 'minimumBathrooms'], [maximumBathrooms, 'maximumBathrooms'],
+    [minimumBedrooms, 'minimumBedrooms'], [maximumBedrooms, 'maximumBedrooms'],
+    [minimumParking, 'minimumParking'], [maximumParking, 'maximumParking'],
+  ];
+  for (const [val, name] of intChecks) {
+    if (val !== undefined) {
+      const n = Number(val);
+      if (!Number.isInteger(n) || n < 0 || String(val).includes('.'))
+        return res.status(400).json({ error: true, message: `Invalid ${name} parameter. Must be a non-negative integer.` });
+    }
+  }
+  if (postcode !== undefined) {
+    const pc = Number(postcode);
+    if (!Number.isInteger(pc) || pc < 0 || pc > 9999 || String(postcode).includes('.'))
+      return res.status(400).json({ error: true, message: 'Invalid postcode parameter. Must be an integer in the range of 0000-9999.' });
+  }
 
   let query = req.db.from('data')
   .leftJoin('ratings', 'data.id', 'ratings.rentalId')
@@ -112,10 +131,12 @@ router.get('/search', (req, res, next) => {
   Promise.all([query.limit(perPage).offset(offset), countQuery])
     .then(([rows, countRows]) => {
       const total = countRows.length;
-      const lastPage = Math.max(1, Math.ceil(total / perPage));
+      const lastPage = Math.ceil(total / perPage);
       res.status(200).json({
         data: rows.map(r => ({
           ...r,
+          latitude: parseFloat(r.latitude),
+          longitude: parseFloat(r.longitude),
           averageRating: r.averageRating != null ? parseFloat(r.averageRating) : null,
           numRatings: parseInt(r.numRatings)
         })),
@@ -124,7 +145,7 @@ router.get('/search', (req, res, next) => {
           nextPage: pageNum < lastPage ? pageNum + 1 : null }
       });
     })
-    .catch(err => { console.log(err); res.status(500).json({ error: true, message: 'Error in MySQL query' }); });
+    .catch(err => { console.error(err); res.status(500).json({ error: true, message: 'Error in MySQL query' }); });
 });
 
 
@@ -151,30 +172,14 @@ router.get('/:id', (req, res, next) => {
       return review;
     });
 
-    res.status(200).json({ ...rental, averageRating, numRatings, reviews });
+    res.status(200).json({ ...rental, latitude: parseFloat(rental.latitude),
+  longitude: parseFloat(rental.longitude), averageRating, numRatings, reviews });
   })
   .catch(err => {
-    console.log(err);
+    console.error(err);
     res.status(500).json({ error: true, message: 'Error in MySQL query' });
   });
 });
 
 
-
-//To extend your learning, make this API a little more robust. 
-//You might notice at the moment that if you specify a city and
-//  countryCode that do not correspond with a real entry, the 
-// API still returns status code 200 and a 'Successfully updated'
-//  message, in spite of no row being updated - because an update w
-// ith a where clause that selects no rows is not an error. An .update()
-//  query returns the number of rows updated, so use this and send an 
-// appropriate error 404 message.
-
 export default router;
-
-
-
-// to do: add error handling for missing fields in post request body
-// to do: add error handling for invalid country code in post request body
-// to do: add result limit 
-// to do: mdoify api to cause reuslts to be sorted in some way 
